@@ -1,0 +1,16 @@
+{
+  "name": "zsh-on-windows",
+  "version": "1.0.0",
+  "description": "Installs Zsh on Windows without WSL",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jasmine"
+  },
+  "type": "module",
+  "keywords": ["zsh", "windows", "shell", "command-line"],
+  "author": "Justice Ogbonna",
+  "license": "ISC",
+  "devDependencies": {
+    "jasmine": "^5.3.0"
+  }
+}
