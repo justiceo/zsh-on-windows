@@ -1,9 +1,13 @@
 import { existsSync, createWriteStream, promises as fsPromises } from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as https from 'https';
-import unzipper from 'unzipper';
+import followRedirects from 'follow-redirects';
+import * as tar from 'tar';
 import fsExtra from 'fs-extra';
+
+const { https } = followRedirects;
+// Define __dirname for compatibility
+const __dirname = path.resolve();
 
 /**
  * Main function to install Zsh on Windows.
@@ -53,42 +57,60 @@ export async function isGitBashInstalled() {
 
 /**
  * Downloads the precompiled Zsh binaries for Windows.
- * @returns {Promise<string>} The path to the downloaded ZIP file.
+ * @returns {Promise<string>} The path to the downloaded tar.gz file.
  */
 export async function downloadZsh() {
-  const url = 'https://github.com/romkatv/zsh-bin/releases/download/v5.8.1/zsh-v5.8.1-mingw-w64-x86_64.zip';
-  const downloadPath = path.join(__dirname, 'zsh.zip');
+  const url = 'https://github.com/romkatv/zsh-bin/releases/download/v6.1.1/zsh-5.8-cygwin_nt-10.0-x86_64.tar.gz';
+  const downloadPath = path.join(__dirname, 'zsh.tar.gz');
 
   return new Promise((resolve, reject) => {
     console.log("Downloading Zsh...");
     const file = createWriteStream(downloadPath);
+
     https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download file. HTTP Status Code: ${response.statusCode}`));
+        return;
+      }
       response.pipe(file);
-      file.on('finish', () => {
-        file.close(() => resolve(downloadPath));
+      file.on('finish', async () => {
+        file.close();
+        try {
+          const stats = await fsPromises.stat(downloadPath);
+          if (stats.size > 1024 * 1024) { // Check if size > 1MB
+            resolve(downloadPath);
+          } else {
+            reject(new Error('Downloaded file is too small, download may have failed.'));
+          }
+        } catch (err) {
+          reject(err);
+        }
       });
     }).on('error', (err) => {
-      reject(err);
+      fs.unlink(downloadPath, () => reject(err)); // Delete the file asynchronously
     });
   });
 }
 
 /**
- * Unpacks the downloaded Zsh ZIP file.
- * @param {string} zipPath - The path to the ZIP file.
+ * Unpacks the downloaded Zsh tar.gz file.
+ * @param {string} tarGzPath - The path to the tar.gz file.
  * @returns {Promise<string>} The path to the unpacked Zsh files.
  */
-export async function unpackZsh(zipPath) {
+export async function unpackZsh(tarGzPath) {
   const extractPath = path.join(__dirname, 'zsh-extract');
   await fsPromises.mkdir(extractPath, { recursive: true });
 
-  return new Promise((resolve, reject) => {
-    console.log("Unpacking Zsh...");
-    fs.createReadStream(zipPath)
-      .pipe(unzipper.Extract({ path: extractPath }))
-      .on('close', () => resolve(extractPath))
-      .on('error', (err) => reject(err));
-  });
+  console.log("Unpacking Zsh...");
+  try {
+    await tar.x({
+      file: tarGzPath,
+      cwd: extractPath,
+    });
+    return extractPath;
+  } catch (err) {
+    throw err;
+  }
 }
 
 /**
@@ -99,7 +121,6 @@ export async function unpackZsh(zipPath) {
 export async function installZsh(zshPath, gitBashPath) {
   const zshBinPath = path.join(zshPath, 'bin');
   const zshSharePath = path.join(zshPath, 'share');
-  const zshLibPath = path.join(zshPath, 'lib');
 
   const gitUsrPath = path.join(gitBashPath, 'usr');
 
@@ -110,10 +131,4 @@ export async function installZsh(zshPath, gitBashPath) {
 
   // Copy 'share' folder
   await fsExtra.copy(zshSharePath, path.join(gitUsrPath, 'share'), { overwrite: true });
-
-  // Copy 'lib' folder
-  await fsExtra.copy(zshLibPath, path.join(gitUsrPath, 'lib'), { overwrite: true });
 }
-
-// Run the installation
-installZshOnWindows();
