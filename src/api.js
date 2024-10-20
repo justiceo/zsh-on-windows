@@ -4,6 +4,7 @@ import * as path from 'path';
 import followRedirects from 'follow-redirects';
 import * as tar from 'tar';
 import fsExtra from 'fs-extra';
+import { execSync } from 'child_process';
 
 const { https } = followRedirects;
 // Define __dirname for compatibility
@@ -14,6 +15,12 @@ const __dirname = path.resolve();
  */
 export async function installZshOnWindows() {
   console.log("Installing Zsh on Windows...");
+
+  if (!isRunningAsAdmin()) {
+    console.log("Not running as admin. Attempting to relaunch as admin...");
+    relaunchAsAdmin();
+    return;
+  }
 
   const gitBashPath = await isGitBashInstalled();
   if (!gitBashPath) {
@@ -34,6 +41,28 @@ export async function installZshOnWindows() {
   } catch (error) {
     console.error("An error occurred:", error);
   }
+}
+
+/**
+ * Checks if the script is running with administrative privileges.
+ * @returns {boolean} True if running as admin, otherwise false.
+ */
+function isRunningAsAdmin() {
+  try {
+    execSync('net session', { stdio: 'ignore' });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Relaunches the current script with administrative privileges.
+ */
+function relaunchAsAdmin() {
+  const scriptPath = process.argv[1];
+  const args = process.argv.slice(2).join(' ');
+  execSync(`powershell -Command "Start-Process 'node' -ArgumentList '${scriptPath} ${args}' -Verb RunAs"`, { stdio: 'ignore' });
 }
 
 /**
